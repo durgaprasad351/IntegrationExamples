@@ -1,0 +1,16 @@
+{
+    "inputMessageMetadata": {
+        "messagePayload": {
+            "connectorName": "#_custom_mule_metadata_type_#",
+            "typeId": "genebility_response"
+        }
+    },
+    "outputMessageMetadata": {
+        "messagePayload": {
+            "connectorName": "#_custom_mule_metadata_type_#",
+            "typeId": "tarrif_rate"
+        }
+    },
+    "id": "c43f5e68-1f78-4d88-89c0-15038b233dce",
+    "version": "5.2.0.0"
+}

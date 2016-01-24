@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule 
+xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" 
+xmlns:json="http://www.mulesoft.org/schema/mule/json" 
+xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" 
+xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" 
+xmlns:http="http://www.mulesoft.org/schema/mule/http" 
+xmlns="http://www.mulesoft.org/schema/mule/core" 
+xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+xmlns:spring="http://www.springframework.org/schema/beans" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.springframework.org/schema/beans 
+http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core 
+http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http 
+http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/dw 
+http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json 
+http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking 
+http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="9090" doc:name="HTTP Listener Configuration"/>
+    <http:request-config name="TestServices" host="localhost" port="8080" basePath="/" doc:name="HTTP Request Configuration"/>
+    <flow name="tarrifDataFlow" initialState="started">
+        <http:request config-ref="TestServices" path="/genebility" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="zipCode" value="#[sessionVars.tagDetails.zipCode]"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message metadata:id="c43f5e68-1f78-4d88-89c0-15038b233dce" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload.billingRateKWH as :string]]></dw:set-payload>
+        </dw:transform-message>
+        <set-session-variable variableName="tarrifRate" value="#[payload]" doc:name="Session Variable"/>
+    </flow>
+    <flow name="WeatherData" initialState="started">
+        <http:request config-ref="TestServices" path="/weather" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="zipCode" value="#[sessionVars.tagDetails.zipCode]"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message metadata:id="2708895b-71ba-423a-9751-2f240007ab99" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload.current.temp as :string]]></dw:set-payload>
+        </dw:transform-message>
+        <set-session-variable variableName="currentTemp" value="#[payload]" doc:name="Session Variable"/>
+        <logger message="Current Temperature in session #[sessionVars.currentTemp]" level="INFO" doc:name="Logger"/>
+    </flow>
+    <flow name="TagDetails">
+        <http:request config-ref="TestServices" path="/tag" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="tagName" value="#[sessionVars.havcEvent.tagName]"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message metadata:id="cf8f797c-7397-4adb-8b56-348c7b54143f" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	tagName: payload.tagName,
+	buildingId: payload.buildingId,
+	zipCode: payload.zipCode,
+	currentTemp : 0,
+	currentRate : 0,
+	cost : 0
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <set-session-variable variableName="tagDetails" value="#[payload]" mimeType="application/json" doc:name="TAG Details"/>
+    </flow>
+    <flow name="CreateHVACEvent" initialState="started">
+        <set-payload value="#[sessionVars.havcEvent]" mimeType="application/json" doc:name="Set Payload"/>
+        <http:request config-ref="TestServices" path="/tag/event" method="POST" doc:name="HTTP" >
+        	
+        </http:request>
+    </flow>
+    <flow name="testhttpFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/hvac/log" allowedMethods="POST" doc:name="HTTP"/>
+        <dw:transform-message metadata:id="873478a2-3551-400b-ab34-c0bd4cbfde63" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	tagName : payload.tagName,
+	timeStamp: payload.timeStamp,
+	voltage: payload.voltage
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <set-session-variable variableName="havcEvent" value="#[payload]" doc:name="HVAC Event" mimeType="application/json"/>
+        <logger message="#[payload]" level="INFO" doc:name="Logger"/>
+        <flow-ref name="TagDetails" doc:name="Get Tag Details"/>
+        <logger message="Tag Details zip code is  #[tagDetails.zipCode]" level="INFO" metadata:id="5111f6d5-616c-4920-987c-45f265802feb" doc:name="Logger"/>
+        <flow-ref name="WeatherData" doc:name="Get Weather Data"/>
+        <flow-ref name="tarrifDataFlow" doc:name="GetTarrifData"/>
+        <expression-transformer expression="#[java.lang.Integer.parseInt(sessionVars.currentTemp)]" doc:name="Expression"/>
+        <flow-ref name="CreateHVACEvent" doc:name="CreateHVACEvent"/>
+        <logger message="Final data ::::  #[sessionVars.tarrifRate] and #[sessionVars.havcEvent] *** #[sessionVars.tagDetails.currentTemp]" level="INFO" doc:name="Logger"/>
+    </flow>
+</mule>
